@@ -3,16 +3,18 @@ package com.shine.autobridge;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
 import org.lwjgl.glfw.GLFW;
 
 public class AutoBridgeClient implements ClientModInitializer {
@@ -41,14 +43,15 @@ public class AutoBridgeClient implements ClientModInitializer {
                     client.player.displayClientMessage(
                             Component.literal(
                                     "Auto Bridge: " +
-                                            (enabled ? "ON" : "OFF")
+                                    (enabled ? "ON" : "OFF")
                             ),
                             true
                     );
                 }
             }
 
-            if (!enabled || client.player == null) {
+            if (!enabled || client.player == null ||
+                    client.level == null || client.gameMode == null) {
                 return;
             }
 
@@ -57,21 +60,38 @@ public class AutoBridgeClient implements ClientModInitializer {
                 return;
             }
 
-            placeBridge(client);
+            scaffoldPlace(client);
         });
     }
 
-    private static void placeBridge(Minecraft client) {
+    private static void scaffoldPlace(Minecraft client) {
 
-        if (client.level == null || client.gameMode == null) {
+        double motionX = client.player.getDeltaMovement().x;
+        double motionZ = client.player.getDeltaMovement().z;
+
+        if (Math.abs(motionX) < 0.005 &&
+                Math.abs(motionZ) < 0.005) {
             return;
         }
 
-        // Player ki movement direction
-        double x = client.player.getDeltaMovement().x;
-        double z = client.player.getDeltaMovement().z;
+        int dx;
+        int dz;
 
-        if (Math.abs(x) < 0.01 && Math.abs(z) < 0.01) {
+        if (Math.abs(motionX) > Math.abs(motionZ)) {
+            dx = motionX > 0 ? 1 : -1;
+            dz = 0;
+        } else {
+            dx = 0;
+            dz = motionZ > 0 ? 1 : -1;
+        }
+
+        BlockPos target = BlockPos.containing(
+                client.player.getX() + dx,
+                client.player.getY() - 1.0,
+                client.player.getZ() + dz
+        );
+
+        if (!client.level.getBlockState(target).isAir()) {
             return;
         }
 
@@ -82,53 +102,70 @@ public class AutoBridgeClient implements ClientModInitializer {
         }
 
         /*
-         * Player ke feet se ek block aage.
-         * Y ko player ke feet ke level par rakha gaya hai,
-         * taake air me bhi bridge continue ho.
+         * Target ke neeche/side me nearby block dhoondo.
+         * Isi existing block ki face par normal Minecraft
+         * placement request bheji jayegi.
          */
-        int dx = 0;
-        int dz = 0;
-
-        if (Math.abs(x) > Math.abs(z)) {
-            dx = x > 0 ? 1 : -1;
-        } else {
-            dz = z > 0 ? 1 : -1;
-        }
-
-        BlockPos target = BlockPos.containing(
-                client.player.getX() + dx,
-                client.player.getY() - 1.0,
-                client.player.getZ() + dz
+        Placement placement = findPlacement(
+                client,
+                target
         );
 
-        // Agar target already filled hai to kuch nahi karna
-        if (!client.level.getBlockState(target).isAir()) {
+        if (placement == null) {
             return;
         }
 
-        /*
-         * Target ke neeche support check.
-         * Agar support hai to normal placement.
-         */
-        BlockPos support = target.below();
+        client.player.getInventory().setSelectedSlot(slot);
 
-        if (!client.level.getBlockState(support).isAir()) {
+        client.gameMode.useItemOn(
+                client.player,
+                InteractionHand.MAIN_HAND,
+                new BlockHitResult(
+                        placement.hitPos,
+                        placement.face,
+                        placement.support,
+                        false
+                )
+        );
 
-            client.player.getInventory().setSelectedSlot(slot);
+        cooldown = 1;
+    }
 
-            client.gameMode.useItemOn(
-                    client.player,
-                    InteractionHand.MAIN_HAND,
-                    new net.minecraft.world.phys.BlockHitResult(
-                            support.getCenter(),
-                            Direction.UP,
-                            support,
-                            false
-                    )
-            );
+    private static Placement findPlacement(
+            Minecraft client,
+            BlockPos target
+    ) {
 
-            cooldown = 2;
+        Direction[] directions = {
+                Direction.DOWN,
+                Direction.UP,
+                Direction.NORTH,
+                Direction.SOUTH,
+                Direction.WEST,
+                Direction.EAST
+        };
+
+        for (Direction direction : directions) {
+
+            BlockPos support = target.relative(direction.getOpposite());
+
+            BlockState state =
+                    client.level.getBlockState(support);
+
+            if (!state.isAir() && state.getCollisionShape(
+                    client.level,
+                    support
+            ).isEmpty() == false) {
+
+                return new Placement(
+                        support,
+                        direction,
+                        support.getCenter()
+                );
+            }
         }
+
+        return null;
     }
 
     private static int findAllowedBlock(Minecraft client) {
@@ -138,13 +175,11 @@ public class AutoBridgeClient implements ClientModInitializer {
             ItemStack stack =
                     client.player.getInventory().getItem(i);
 
-            if (!(stack.getItem() instanceof BlockItem blockItem)) {
+            if (!(stack.getItem() instanceof BlockItem item)) {
                 continue;
             }
 
-            Block block = blockItem.getBlock();
-
-            if (isAllowedBlock(block)) {
+            if (isAllowedBlock(item.getBlock())) {
                 return i;
             }
         }
@@ -173,4 +208,10 @@ public class AutoBridgeClient implements ClientModInitializer {
                 || block == Blocks.RED_WOOL
                 || block == Blocks.BLACK_WOOL;
     }
-    }
+
+    private record Placement(
+            BlockPos support,
+            Direction face,
+            net.minecraft.world.phys.Vec3 hitPos
+    ) {}
+}
