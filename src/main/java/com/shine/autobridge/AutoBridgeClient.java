@@ -173,4 +173,4 @@ public class AutoBridgeClient implements ClientModInitializer {
                 || block == Blocks.RED_WOOL
                 || block == Blocks.BLACK_WOOL;
     }
-}
+    }
