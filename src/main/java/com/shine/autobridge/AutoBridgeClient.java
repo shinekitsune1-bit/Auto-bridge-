@@ -5,12 +5,15 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.KeyMapping;
-import net.minecraft.world.item.BlockItem;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import org.lwjgl.glfw.GLFW;
 
 public class AutoBridgeClient implements ClientModInitializer {
@@ -36,8 +39,9 @@ public class AutoBridgeClient implements ClientModInitializer {
 
                 if (client.player != null) {
                     client.player.displayClientMessage(
-                            net.minecraft.network.chat.Component.literal(
-                                    "Auto Bridge: " + (enabled ? "ON" : "OFF")
+                            Component.literal(
+                                    "Auto Bridge: " +
+                                    (enabled ? "ON" : "OFF")
                             ),
                             true
                     );
@@ -45,12 +49,12 @@ public class AutoBridgeClient implements ClientModInitializer {
             }
 
             if (enabled) {
-                placeBridgeBlock(client);
+                bridge(client);
             }
         });
     }
 
-    private static void placeBridgeBlock(Minecraft client) {
+    private static void bridge(Minecraft client) {
 
         if (client.player == null ||
                 client.level == null ||
@@ -58,13 +62,15 @@ public class AutoBridgeClient implements ClientModInitializer {
             return;
         }
 
-        BlockPos playerPos = client.player.blockPosition();
+        // Player ke neeche wala block
+        BlockPos below = BlockPos.containing(
+                client.player.getX(),
+                client.player.getY() - 1.0,
+                client.player.getZ()
+        );
 
-        // Block directly below the player's feet
-        BlockPos targetPos = playerPos.below();
-
-        // Only place if the position is empty
-        if (!client.level.getBlockState(targetPos).isAir()) {
+        // Agar neeche already block hai to kuch nahi karna
+        if (!client.level.getBlockState(below).isAir()) {
             return;
         }
 
@@ -76,13 +82,28 @@ public class AutoBridgeClient implements ClientModInitializer {
 
         client.player.getInventory().setSelectedSlot(slot);
 
+        BlockPos support = below.below();
+
+        if (client.level.getBlockState(support).isAir()) {
+            return;
+        }
+
+        BlockHit(client, support, below);
+    }
+
+    private static void BlockHit(
+            Minecraft client,
+            BlockPos support,
+            BlockPos target
+    ) {
+
         client.gameMode.useItemOn(
                 client.player,
-                net.minecraft.world.InteractionHand.MAIN_HAND,
+                InteractionHand.MAIN_HAND,
                 new net.minecraft.world.phys.BlockHitResult(
-                        client.player.position(),
+                        support.getCenter(),
                         Direction.UP,
-                        targetPos,
+                        support,
                         false
                 )
         );
@@ -99,10 +120,9 @@ public class AutoBridgeClient implements ClientModInitializer {
                 continue;
             }
 
-            BlockState state =
-                    blockItem.getBlock().defaultBlockState();
+            Block block = blockItem.getBlock();
 
-            if (isAllowedBlock(state)) {
+            if (isAllowedBlock(block)) {
                 return i;
             }
         }
@@ -110,24 +130,25 @@ public class AutoBridgeClient implements ClientModInitializer {
         return -1;
     }
 
-    private static boolean isAllowedBlock(BlockState state) {
+    private static boolean isAllowedBlock(Block block) {
 
-        return state.is(Blocks.COBBLESTONE)
-                || state.is(Blocks.WHITE_WOOL)
-                || state.is(Blocks.ORANGE_WOOL)
-                || state.is(Blocks.MAGENTA_WOOL)
-                || state.is(Blocks.LIGHT_BLUE_WOOL)
-                || state.is(Blocks.YELLOW_WOOL)
-                || state.is(Blocks.LIME_WOOL)
-                || state.is(Blocks.PINK_WOOL)
-                || state.is(Blocks.GRAY_WOOL)
-                || state.is(Blocks.LIGHT_GRAY_WOOL)
-                || state.is(Blocks.CYAN_WOOL)
-                || state.is(Blocks.PURPLE_WOOL)
-                || state.is(Blocks.BLUE_WOOL)
-                || state.is(Blocks.BROWN_WOOL)
-                || state.is(Blocks.GREEN_WOOL)
-                || state.is(Blocks.RED_WOOL)
-                || state.is(Blocks.BLACK_WOOL);
+        return block == Blocks.COBBLESTONE
+
+                || block == Blocks.WHITE_WOOL
+                || block == Blocks.ORANGE_WOOL
+                || block == Blocks.MAGENTA_WOOL
+                || block == Blocks.LIGHT_BLUE_WOOL
+                || block == Blocks.YELLOW_WOOL
+                || block == Blocks.LIME_WOOL
+                || block == Blocks.PINK_WOOL
+                || block == Blocks.GRAY_WOOL
+                || block == Blocks.LIGHT_GRAY_WOOL
+                || block == Blocks.CYAN_WOOL
+                || block == Blocks.PURPLE_WOOL
+                || block == Blocks.BLUE_WOOL
+                || block == Blocks.BROWN_WOOL
+                || block == Blocks.GREEN_WOOL
+                || block == Blocks.RED_WOOL
+                || block == Blocks.BLACK_WOOL;
     }
-                    }
+            }
