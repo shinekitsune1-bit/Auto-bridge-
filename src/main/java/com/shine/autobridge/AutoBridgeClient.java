@@ -11,15 +11,15 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Block;
 import org.lwjgl.glfw.GLFW;
 
 public class AutoBridgeClient implements ClientModInitializer {
 
     private static boolean enabled = false;
     private static KeyMapping toggleKey;
+    private static int cooldown = 0;
 
     @Override
     public void onInitializeClient() {
@@ -41,36 +41,37 @@ public class AutoBridgeClient implements ClientModInitializer {
                     client.player.displayClientMessage(
                             Component.literal(
                                     "Auto Bridge: " +
-                                    (enabled ? "ON" : "OFF")
+                                            (enabled ? "ON" : "OFF")
                             ),
                             true
                     );
                 }
             }
 
-            if (enabled) {
-                bridge(client);
+            if (!enabled || client.player == null) {
+                return;
             }
+
+            if (cooldown > 0) {
+                cooldown--;
+                return;
+            }
+
+            placeBridge(client);
         });
     }
 
-    private static void bridge(Minecraft client) {
+    private static void placeBridge(Minecraft client) {
 
-        if (client.player == null ||
-                client.level == null ||
-                client.gameMode == null) {
+        if (client.level == null || client.gameMode == null) {
             return;
         }
 
-        // Player ke neeche wala block
-        BlockPos below = BlockPos.containing(
-                client.player.getX(),
-                client.player.getY() - 1.0,
-                client.player.getZ()
-        );
+        // Player ki movement direction
+        double x = client.player.getDeltaMovement().x;
+        double z = client.player.getDeltaMovement().z;
 
-        // Agar neeche already block hai to kuch nahi karna
-        if (!client.level.getBlockState(below).isAir()) {
+        if (Math.abs(x) < 0.01 && Math.abs(z) < 0.01) {
             return;
         }
 
@@ -80,33 +81,54 @@ public class AutoBridgeClient implements ClientModInitializer {
             return;
         }
 
-        client.player.getInventory().setSelectedSlot(slot);
+        /*
+         * Player ke feet se ek block aage.
+         * Y ko player ke feet ke level par rakha gaya hai,
+         * taake air me bhi bridge continue ho.
+         */
+        int dx = 0;
+        int dz = 0;
 
-        BlockPos support = below.below();
+        if (Math.abs(x) > Math.abs(z)) {
+            dx = x > 0 ? 1 : -1;
+        } else {
+            dz = z > 0 ? 1 : -1;
+        }
 
-        if (client.level.getBlockState(support).isAir()) {
+        BlockPos target = BlockPos.containing(
+                client.player.getX() + dx,
+                client.player.getY() - 1.0,
+                client.player.getZ() + dz
+        );
+
+        // Agar target already filled hai to kuch nahi karna
+        if (!client.level.getBlockState(target).isAir()) {
             return;
         }
 
-        BlockHit(client, support, below);
-    }
+        /*
+         * Target ke neeche support check.
+         * Agar support hai to normal placement.
+         */
+        BlockPos support = target.below();
 
-    private static void BlockHit(
-            Minecraft client,
-            BlockPos support,
-            BlockPos target
-    ) {
+        if (!client.level.getBlockState(support).isAir()) {
 
-        client.gameMode.useItemOn(
-                client.player,
-                InteractionHand.MAIN_HAND,
-                new net.minecraft.world.phys.BlockHitResult(
-                        support.getCenter(),
-                        Direction.UP,
-                        support,
-                        false
-                )
-        );
+            client.player.getInventory().setSelectedSlot(slot);
+
+            client.gameMode.useItemOn(
+                    client.player,
+                    InteractionHand.MAIN_HAND,
+                    new net.minecraft.world.phys.BlockHitResult(
+                            support.getCenter(),
+                            Direction.UP,
+                            support,
+                            false
+                    )
+            );
+
+            cooldown = 2;
+        }
     }
 
     private static int findAllowedBlock(Minecraft client) {
@@ -151,4 +173,4 @@ public class AutoBridgeClient implements ClientModInitializer {
                 || block == Blocks.RED_WOOL
                 || block == Blocks.BLACK_WOOL;
     }
-            }
+}
