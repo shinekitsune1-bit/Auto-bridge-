@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "auto-bridge",
+  "version": "${version}",
+  "name": "Auto Bridge",
+  "description": "Automatically places blocks under the player while bridging.",
+  "authors": [
+    "SHINE"
+  ],
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.shine.autobridge.AutoBridgeClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~1.21.8",
+    "fabric-api": "*"
+  }
+}
